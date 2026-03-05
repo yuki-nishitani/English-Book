@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WordBook</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    /* ===== card.html の“白背景＋薄い枠＋角丸”のトーンに寄せる ===== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root{
+      --bg: #fafafa;
+      --surface: #ffffff;
+      --surface-2: #f2f4f7;
+      --border: #ddd;
+
+      --text: #111;
+      --text-muted: #666;
+
+      --accent: #ffe15b;     /* 既存の金色アクセントは残す */
+      --error: #c85050;
+
+      --radius: 14px;        /* card.html の card と合わせる */
+    }
+
+    body{
+
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif; /* card.html寄り */
+      margin: 0 0 0 0;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    a{ color: inherit; }
+
+    .wrap{
+      max-width: 720px;      /* card.html と合わせる */
+      margin: 0 auto;
+      padding: 16px;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+    }
+
+    /* ===== Login card ===== */
+    .card{
+      width: min(420px, 100%);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    .header{
+      text-align: center;
+      margin: 6px 0 30px;
+    }
+
+    .logo{
+   
+      font-size: 24px;
+      letter-spacing: -0.8px;
+      line-height: 1;
+    }
+
+    .sub{
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--text-muted);
+      letter-spacing: .08em;
+    }
+
+    .field{ margin: 12px 0 12px 0; }
+
+    .field label{
+      display: block;
+      font-size: 12px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #555;
+      margin-bottom: 8px;
+    }
+
+    .field input{
+      width: 100%;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-family: 'DM Mono', monospace;
+      font-size: 14px;
+      padding: 12px 14px;
+      outline: none;
+      transition: border-color .2s, box-shadow .2s, transform .08s;
+    }
+
+    .field input:focus{
+      border-color: rgba(200,181,96,.9);
+      box-shadow: 0 0 0 3px rgba(200,181,96,.18);
+    }
+
+    .field input::placeholder{ color: #999; }
+
+    /* ===== buttons: card.html の modebtn/navbtn の印象に寄せる ===== */
+    .btn{
+      width: 100%;
+      margin-top: 10px;
+      padding: 10px 12px;            /* card.html のボタン密度 */
+      color: #333;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #f8f8f8;
+      cursor: pointer;
+      user-select: none;
+      font-size: 14px;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn.primary{
+      background: var(--accent);
+      border-color: rgba(0,0,0,.04);
+      color: #696969;
+      font-weight: 600;
+      letter-spacing: .06em;
+    }
+
+    .btn:active{ transform: translateY(1px); }
+    .btn:disabled{ opacity: .55; cursor: not-allowed; }
+
+    .error{
+      margin-top: 12px;
+      padding: 10px 12px;
+      border: 1px solid var(--error);
+      border-radius: 10px;
+      color: var(--error);
+      font-size: 12px;
+      display: none;
+      background: rgba(200,80,80,.06);
+    }
+    .error.show{ display:block; }
+
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="header">
+        <div class="logo">English</div>
+        
+      </div>
+
+      <div class="field">
+        <label>ユーザー名</label>
+        <input type="text" id="username" placeholder="username" autocomplete="username">
+      </div>
+
+      <div class="field">
+        <label>パスワード</label>
+        <input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
+      </div>
+
+      <button class="btn primary" id="loginBtn" onclick="login()">ログイン</button>
+      <div class="error" id="error">ユーザー名またはパスワードが違います</div>
+
+    </div>
+  </div>
+
+  <script>
+    const API = 'https://english-book.yuki-548.workers.dev'  // 本番時は変更
+
+    // Enterキーでログイン
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Enter') login()
+    })
+
+    // すでにログイン済みなら単語一覧へ
+    if (localStorage.getItem('token')) {
+      location.href = 'words.html'
+    }
+
+    async function login() {
+      const username = document.getElementById('username').value.trim()
+      const password = document.getElementById('password').value
+      const btn = document.getElementById('loginBtn')
+      const error = document.getElementById('error')
+
+      if (!username || !password) return
+
+      btn.disabled = true
+      btn.textContent = '...'
+      error.classList.remove('show')
+
+      try {
+        const res = await fetch(`${API}/api/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        })
+
+        if (!res.ok) throw new Error()
+
+        const { token } = await res.json()
+        localStorage.setItem('token', token)
+        location.href = 'words.html'
+
+      } catch {
+        error.classList.add('show')
+        btn.disabled = false
+        btn.textContent = 'ログイン'
+      }
+    }
+  </script>
+</body>
+</html>

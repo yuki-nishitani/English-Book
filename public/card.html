@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WordBook - カードモード</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #fafafa;
+      --surface: #ffffff;
+      --border: #ddd;
+      --text: #111;
+      --text-muted: #666;
+      --accent: #ffe15b;
+      --accent-dark: #c8a800;
+      --memorized-text: #4a8a4a;
+      --radius: 14px;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ===== Header ===== */
+    .header {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(250,250,250,0.92);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px;
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    }
+    .logo { font-size: 18px; font-weight: 600; letter-spacing: -0.5px; }
+    .btn {
+      padding: 7px 12px; border: 1px solid var(--border);
+      border-radius: 10px; background: #f8f8f8;
+      cursor: pointer; font-size: 13px; font-family: inherit; color: #333;
+      display: inline-flex; align-items: center; gap: 5px;
+      white-space: nowrap; transition: background 0.15s;
+    }
+    .btn:hover { background: #f0f0f0; }
+    .btn:active { transform: translateY(1px); }
+    .btn.primary { background: var(--accent); border-color: rgba(0,0,0,.06); font-weight: 600; color: #555; }
+    .btn.primary:hover { background: #ffd700; }
+    .btn:disabled { opacity: .55; cursor: not-allowed; }
+
+    /* ===== Filter panel ===== */
+    .filter-panel {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 16px;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .filter-row {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    }
+    .filter-label {
+      font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
+      color: #888; white-space: nowrap; min-width: 60px;
+    }
+    .filter-chips {
+      display: flex; flex-wrap: wrap; gap: 6px;
+    }
+    .filter-chip {
+      padding: 4px 10px; border: 1px solid var(--border);
+      border-radius: 20px; font-size: 12px; background: #fff;
+      cursor: pointer; white-space: nowrap; transition: all 0.15s; color: var(--text-muted);
+      user-select: none;
+    }
+    .filter-chip:hover { border-color: #aaa; color: var(--text); }
+    .filter-chip.active { background: var(--accent); border-color: rgba(0,0,0,.06); color: #333; font-weight: 600; }
+
+    .toggle-row {
+      display: flex; align-items: center; gap: 10px;
+    }
+    .toggle-label { font-size: 13px; color: var(--text-muted); }
+    .toggle { position: relative; width: 40px; height: 22px; display: inline-block; flex-shrink: 0; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute; inset: 0; background: #ddd;
+      border-radius: 22px; cursor: pointer; transition: background 0.2s;
+    }
+    .toggle-slider::before {
+      content: ''; position: absolute; width: 16px; height: 16px;
+      left: 3px; top: 3px; background: #fff; border-radius: 50%;
+      transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .toggle input:checked + .toggle-slider { background: var(--accent-dark); }
+    .toggle input:checked + .toggle-slider::before { transform: translateX(18px); }
+
+    /* ===== Main area ===== */
+    .main {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 24px 16px; gap: 20px;
+    }
+
+    .counter {
+      font-size: 12px; color: var(--text-muted);
+      letter-spacing: .05em;
+    }
+
+    /* ===== Card ===== */
+    .card {
+      width: 100%; max-width: 480px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+      cursor: pointer;
+      user-select: none;
+      overflow: hidden;
+    }
+
+    /* archicard方式: display切り替えで表裏 */
+    .face { display: none; }
+    .card.show-front .front { display: block; }
+    .card.show-back  .back  { display: block; }
+
+    .card-hint {
+      font-size: 11px; color: #bbb; letter-spacing: .08em;
+      text-transform: uppercase; margin-bottom: 16px;
+    }
+    .card-en {
+      font-size: 32px; font-weight: 700; letter-spacing: -1px;
+      line-height: 1.2;
+    }
+    .card-tags {
+      display: flex; flex-wrap: wrap; gap: 5px; margin-top: 14px;
+    }
+    .tag-badge {
+      padding: 3px 8px; background: #f0f0f0;
+      border-radius: 6px; font-size: 11px; color: #555;
+    }
+
+    /* 裏面 */
+    .card-en-small {
+      font-size: 13px; color: var(--text-muted); margin-bottom: 8px;
+    }
+    .card-ja {
+      font-size: 28px; font-weight: 600; letter-spacing: -0.5px;
+      margin-bottom: 14px; line-height: 1.3;
+    }
+    .card-memo {
+      font-size: 13px; color: #888; font-style: italic;
+      padding: 10px 12px; background: #f8f8f8;
+      border-radius: 8px; line-height: 1.6;
+    }
+
+    /* スワイプアニメーション */
+    .card.swipe-left  { animation: swipeLeft  0.28s ease forwards; }
+    .card.swipe-right { animation: swipeRight 0.28s ease forwards; }
+    @keyframes swipeLeft  { to { transform: translateX(-110%) rotate(-6deg); opacity: 0; } }
+    @keyframes swipeRight { to { transform: translateX(110%)  rotate(6deg);  opacity: 0; } }
+    .card.entering { animation: enterCard 0.28s ease forwards; }
+    @keyframes enterCard {
+      from { transform: translateX(50px) scale(0.97); opacity: 0; }
+      to   { transform: translateX(0)    scale(1);    opacity: 1; }
+    }
+
+    /* ===== Controls ===== */
+    .controls {
+      display: flex; gap: 12px; align-items: center;
+    }
+    .nav-btn {
+      width: 48px; height: 48px;
+      border: 1px solid var(--border); border-radius: 50%;
+      background: var(--surface); cursor: pointer;
+      font-size: 20px; display: flex; align-items: center; justify-content: center;
+      transition: all 0.15s; color: #555;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+    .nav-btn:hover { background: #f0f0f0; border-color: #bbb; }
+    .nav-btn:active { transform: scale(0.94); }
+    .nav-btn:disabled { opacity: .35; cursor: not-allowed; }
+
+    .next-btn {
+      padding: 12px 28px;
+      border: 1px solid rgba(0,0,0,.06);
+      border-radius: 24px;
+      background: var(--accent);
+      cursor: pointer; font-size: 15px; font-weight: 600;
+      font-family: inherit; color: #555;
+      transition: all 0.15s;
+      box-shadow: 0 2px 8px rgba(200,168,0,0.2);
+    }
+    .next-btn:hover { background: #ffd700; }
+    .next-btn:active { transform: scale(0.97); }
+
+    /* 習得チェック＋重要度 */
+    .card-status-row {
+      width: 100%; max-width: 480px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .memorized-btn {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 16px;
+      border: 2px solid var(--border);
+      border-radius: 24px;
+      background: #fff;
+      font-size: 15px; font-weight: 600; font-family: inherit;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.2s;
+      user-select: none;
+    }
+    .memorized-btn .check-icon {
+      font-size: 18px; line-height: 1;
+      transition: transform 0.2s;
+    }
+    .memorized-btn.is-memorized {
+      background: var(--memorized-text);
+      border-color: var(--memorized-text);
+      color: #fff;
+    }
+    .memorized-btn.is-memorized .check-icon {
+      transform: scale(1.2);
+    }
+    /* 押した瞬間のバウンス */
+    @keyframes memoBounce {
+      0%   { transform: scale(1); }
+      40%  { transform: scale(1.08); }
+      70%  { transform: scale(0.95); }
+      100% { transform: scale(1); }
+    }
+    .memorized-btn.bounce { animation: memoBounce 0.3s ease; }
+    .importance-row {
+      display: flex; align-items: center; gap: 4px;
+    }
+    .i-star {
+      font-size: 26px; cursor: pointer; color: #ddd;
+      transition: color 0.1s, transform 0.1s;
+      user-select: none; line-height: 1;
+    }
+    .i-star:hover { transform: scale(1.2); }
+    .i-star.on { color: var(--accent-dark); }
+
+    /* 空 */
+    .empty-state {
+      text-align: center; padding: 48px 16px;
+      color: var(--text-muted); font-size: 14px; line-height: 1.8;
+    }
+
+    /* 完了 */
+    .done-state {
+      text-align: center;
+    }
+    .done-icon { font-size: 48px; margin-bottom: 12px; }
+    .done-title { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+    .done-sub { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="logo">English</div>
+    <button class="btn" onclick="location.href='words.html'">← 一覧へ</button>
+  </div>
+
+  <!-- フィルター -->
+  <div class="filter-panel">
+    <div class="filter-row">
+      <span class="filter-label">タグ</span>
+      <div class="filter-chips" id="tagFilter">
+        <div class="filter-chip active" data-tag="" onclick="selectTag(this)">すべて</div>
+      </div>
+    </div>
+    <div class="filter-row">
+      <span class="filter-label">重要度</span>
+      <div class="filter-chips" id="importanceFilter">
+        <div class="filter-chip active" data-min="0" onclick="selectMinImportance(this)">すべて</div>
+        <div class="filter-chip" data-min="2" onclick="selectMinImportance(this)">★2以上</div>
+        <div class="filter-chip" data-min="3" onclick="selectMinImportance(this)">★3以上</div>
+        <div class="filter-chip" data-min="4" onclick="selectMinImportance(this)">★4以上</div>
+        <div class="filter-chip" data-min="5" onclick="selectMinImportance(this)">★5</div>
+      </div>
+    </div>
+    <div class="filter-row" style="justify-content: space-between;">
+      <label class="toggle-row">
+        <label class="toggle">
+          <input type="checkbox" id="excludeMemorized" checked onchange="restart()">
+          <span class="toggle-slider"></span>
+        </label>
+        <span class="toggle-label">習得済みを除外</span>
+      </label>
+      <button class="btn primary" onclick="restart()" style="padding:6px 14px;font-size:12px;">
+        シャッフル
+      </button>
+    </div>
+  </div>
+
+  <!-- メイン -->
+  <div class="main" id="main">
+    <div class="counter" id="counter"></div>
+
+    <div class="card-status-row" onclick="event.stopPropagation()">
+      <button class="memorized-btn" id="memorizedBtn" onclick="toggleMemorized(); event.stopPropagation()">
+        <span id="memorizedLabel">習得済みにする</span>
+      </button>
+      <div class="importance-row" id="importanceRow">
+        <span class="i-star" data-val="1" onclick="setImportance(1)">★</span>
+        <span class="i-star" data-val="2" onclick="setImportance(2)">★</span>
+        <span class="i-star" data-val="3" onclick="setImportance(3)">★</span>
+        <span class="i-star" data-val="4" onclick="setImportance(4)">★</span>
+        <span class="i-star" data-val="5" onclick="setImportance(5)">★</span>
+      </div>
+    </div>
+
+    <div class="card show-front" id="card">
+      <div class="face front" id="cardFront">
+        <div class="card-en" id="cardEn">—</div>
+        <div class="card-tags" id="cardTags"></div>
+      </div>
+      <div class="face back" id="cardBack">
+        <div class="card-en-small" id="cardEnBack"></div>
+        <div class="card-ja" id="cardJa"></div>
+        <div class="card-memo" id="cardMemo"></div>
+      </div>
+    </div>
+
+    <div class="controls" id="controls">
+      <button class="nav-btn" id="prevBtn" onclick="prevCard()" title="前へ">←</button>
+      <button class="next-btn" onclick="nextCard()">次へ →</button>
+    </div>
+
+  </div>
+
+<script>
+const API = 'https://english-book.yuki-548.workers.dev'
+const token = localStorage.getItem('token')
+if (!token) location.href = 'index.html'
+const headers = {
+  'Content-Type': 'application/json',
+  'Authorization': `Bearer ${token}`
+}
+
+let allWords = []
+let allTags = []
+let deck = []
+let cursor = 0
+let activeTag = ''
+let minImportance = 0
+let history = []  // 戻るための履歴
+
+// ===== 初期化 =====
+async function init() {
+  const [wordsRes, tagsRes] = await Promise.all([
+    fetch(`${API}/api/words`, { headers }),
+    fetch(`${API}/api/tags`, { headers })
+  ])
+  if (wordsRes.status === 401) { location.href = 'index.html'; return }
+  allWords = await wordsRes.json()
+  allTags = await tagsRes.json()
+  renderTagFilter()
+  restart()
+}
+
+function renderTagFilter() {
+  const bar = document.getElementById('tagFilter')
+  allTags.forEach(t => {
+    const chip = document.createElement('div')
+    chip.className = 'filter-chip'
+    chip.dataset.tag = t.name
+    chip.textContent = t.name
+    chip.onclick = () => selectTag(chip)
+    bar.appendChild(chip)
+  })
+}
+
+function selectTag(el) {
+  document.querySelectorAll('#tagFilter .filter-chip').forEach(c => c.classList.remove('active'))
+  el.classList.add('active')
+  activeTag = el.dataset.tag
+  restart()
+}
+
+function selectMinImportance(el) {
+  document.querySelectorAll('#importanceFilter .filter-chip').forEach(c => c.classList.remove('active'))
+  el.classList.add('active')
+  minImportance = parseInt(el.dataset.min)
+  restart()
+}
+
+function restart() {
+  const excludeMemorized = document.getElementById('excludeMemorized').checked
+
+  let pool = allWords.filter(w => {
+    const matchTag = activeTag === '' || (w.tags || []).includes(activeTag)
+    const matchMem = !excludeMemorized || w.memorized === 0
+    const matchImp = w.importance >= minImportance
+    return matchTag && matchMem && matchImp
+  })
+
+  // シャッフル
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]]
+  }
+
+  deck = pool
+  cursor = 0
+  history = []
+  resetStateMsg()
+  showCard()
+}
+
+// ===== カード表示 =====
+function showCard(direction = 'enter') {
+  if (deck.length === 0) {
+    showEmpty()
+    return
+  }
+  if (cursor >= deck.length) {
+    showDone()
+    return
+  }
+
+  const w = deck[cursor]
+
+  // 表面
+  document.getElementById('cardEn').textContent = w.en
+  const tagsEl = document.getElementById('cardTags')
+  tagsEl.innerHTML = (w.tags || []).map(t =>
+    `<span class="tag-badge">${escHtml(t)}</span>`
+  ).join('')
+
+  // 裏面
+  document.getElementById('cardEnBack').textContent = w.en
+  document.getElementById('cardJa').textContent = w.ja
+  const memoEl = document.getElementById('cardMemo')
+  if (w.memo) {
+    memoEl.textContent = '📝 ' + w.memo
+    memoEl.style.display = 'block'
+  } else {
+    memoEl.style.display = 'none'
+  }
+
+  // 習得ボタン状態更新
+  updateMemorizedBtn(w.memorized === 1)
+
+  // 重要度の星
+  renderImportanceStars(w.importance)
+
+  // カウンター
+  document.getElementById('counter').textContent = `${cursor + 1} / ${deck.length}`
+
+  // 前へボタン
+  document.getElementById('prevBtn').disabled = history.length === 0
+
+  // 表面にリセット
+  card.classList.add('show-front')
+  card.classList.remove('show-back')
+
+  // アニメーション
+  card.classList.remove('swipe-left', 'swipe-right', 'entering')
+  void card.offsetWidth
+  if (direction === 'enter') card.classList.add('entering')
+
+  // コントロール表示
+  document.getElementById('controls').style.display = 'flex'
+  document.getElementById('memorizedBtn').closest('.card-status-row').style.display = 'flex'
+  document.getElementById('counter').style.display = 'block'
+}
+
+function showEmpty() {
+  document.getElementById('card').style.display = 'none'
+  document.getElementById('controls').style.display = 'none'
+  document.getElementById('memorizedBtn').closest('.card-status-row').style.display = 'none'
+  document.getElementById('counter').style.display = 'none'
+  const main = document.getElementById('main')
+  let el = document.getElementById('stateMsg')
+  if (!el) { el = document.createElement('div'); el.id = 'stateMsg'; main.appendChild(el) }
+  el.innerHTML = `<div class="empty-state">該当する単語がありません。<br>フィルターを変更してください。</div>`
+}
+
+function showDone() {
+  document.getElementById('card').style.display = 'none'
+  document.getElementById('controls').style.display = 'none'
+  document.getElementById('memorizedBtn').closest('.card-status-row').style.display = 'none'
+  document.getElementById('counter').style.display = 'none'
+  const main = document.getElementById('main')
+  let el = document.getElementById('stateMsg')
+  if (!el) { el = document.createElement('div'); el.id = 'stateMsg'; main.appendChild(el) }
+  el.innerHTML = `
+    <div class="done-state">
+      <div class="done-icon">🎉</div>
+      <div class="done-title">完了！</div>
+      <div class="done-sub">${deck.length}枚すべて確認しました</div>
+      <button class="btn primary" onclick="restart()">もう一度シャッフル</button>
+    </div>
+  `
+}
+
+function resetStateMsg() {
+  const el = document.getElementById('stateMsg')
+  if (el) el.remove()
+  document.getElementById('card').style.display = 'block'
+  document.getElementById('controls').style.display = 'flex'
+  document.getElementById('memorizedBtn').closest('.card-status-row').style.display = 'flex'
+  document.getElementById('counter').style.display = 'block'
+}
+
+// ===== 操作 =====
+function flipCard() {
+  if (card.classList.contains('show-front')) {
+    card.classList.remove('show-front')
+    card.classList.add('show-back')
+  } else {
+    card.classList.remove('show-back')
+    card.classList.add('show-front')
+  }
+}
+
+function nextCard() {
+  if (cursor >= deck.length) return
+  history.push(cursor)
+  cursor++
+  resetStateMsg()
+  showCard('enter')
+}
+
+function prevCard() {
+  if (history.length === 0) return
+  cursor = history.pop()
+  resetStateMsg()
+  showCard('enter')
+}
+
+// ===== 習得トグル =====
+function renderImportanceStars(val) {
+  document.querySelectorAll('.i-star').forEach(s => {
+    s.classList.toggle('on', parseInt(s.dataset.val) <= val)
+  })
+}
+
+async function setImportance(val) {
+  const w = deck[cursor]
+  if (!w) return
+  w.importance = val
+  const orig = allWords.find(x => x.id === w.id)
+  if (orig) orig.importance = val
+  renderImportanceStars(val)
+  await fetch(`${API}/api/me/words/${w.id}/status`, {
+    method: 'PUT', headers,
+    body: JSON.stringify({ importance: val, memorized: w.memorized, memo: w.memo })
+  })
+}
+
+function updateMemorizedBtn(memorized) {
+  const btn = document.getElementById('memorizedBtn')
+  const label = document.getElementById('memorizedLabel')
+  btn.classList.toggle('is-memorized', memorized)
+  label.textContent = memorized ? '習得済み' : '習得済みにする'
+}
+
+async function toggleMemorized() {
+  const w = deck[cursor]
+  if (!w) return
+  w.memorized = w.memorized === 1 ? 0 : 1  // トグル
+
+  // ボタン即時フィードバック（バウンスアニメ）
+  const btn = document.getElementById('memorizedBtn')
+  btn.classList.remove('bounce')
+  void btn.offsetWidth
+  btn.classList.add('bounce')
+  updateMemorizedBtn(w.memorized === 1)
+
+  // allWordsにも反映
+  const orig = allWords.find(x => x.id === w.id)
+  if (orig) orig.memorized = w.memorized
+
+  // 除外モードON かつ 習得済みにした場合 → deckから除いてカウンター更新
+  const excludeMemorized = document.getElementById('excludeMemorized').checked
+  if (excludeMemorized && w.memorized === 1) {
+    // 少し待ってからページ送り（フィードバックを見せるため）
+    await new Promise(r => setTimeout(r, 500))
+    deck.splice(cursor, 1)
+    if (deck.length === 0) {
+      showDone()
+    } else if (cursor >= deck.length) {
+      cursor = deck.length - 1
+      showCard()
+    } else {
+      showCard()
+    }
+  } else {
+    document.getElementById('counter').textContent = `${cursor + 1} / ${deck.length}`
+  }
+
+  await fetch(`${API}/api/me/words/${w.id}/status`, {
+    method: 'PUT', headers,
+    body: JSON.stringify({ importance: w.importance, memorized: w.memorized, memo: w.memo })
+  })
+}
+
+// ===== タップ & スワイプ =====
+let justSwiped = false
+let touchStartX = 0, touchStartY = 0, touchStartT = 0
+
+const card = document.getElementById('card')
+
+card.addEventListener('click', () => {
+  if (justSwiped) return
+  flipCard()
+})
+
+let tracking = false
+card.addEventListener('touchstart', (e) => {
+  if (!e.touches || e.touches.length !== 1) return
+  touchStartX = e.touches[0].clientX
+  touchStartY = e.touches[0].clientY
+  touchStartT = Date.now()
+  tracking = true
+  justSwiped = false
+}, { passive: true })
+
+card.addEventListener('touchend', (e) => {
+  if (!tracking) return
+  tracking = false
+  const t = e.changedTouches && e.changedTouches[0]
+  if (!t) return
+  const dx = t.clientX - touchStartX
+  const dy = t.clientY - touchStartY
+  const dt = Date.now() - touchStartT
+
+  const isSwipe = Math.abs(dx) >= 60 && Math.abs(dy) <= 60 && dt <= 600
+  if (!isSwipe) return
+
+  justSwiped = true
+  setTimeout(() => { justSwiped = false }, 250)
+
+  if (dx > 0) {
+    if (history.length > 0) {
+      card.classList.add('swipe-right')
+      setTimeout(() => { card.classList.remove('swipe-right'); prevCard() }, 260)
+    }
+  } else {
+    card.classList.add('swipe-left')
+    setTimeout(() => { card.classList.remove('swipe-left'); nextCard() }, 260)
+  }
+}, { passive: true })
+
+// ===== キーボード =====
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); nextCard() }
+  if (e.key === 'ArrowLeft') prevCard()
+  if (e.key === 'Enter') flipCard()
+})
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+}
+
+init()
+</script>
+</body>
+</html>
