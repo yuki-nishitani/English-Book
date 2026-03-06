@@ -673,7 +673,7 @@ async function toggleMemorized() {
   const excludeMemorized = document.getElementById('excludeMemorized').checked
   if (excludeMemorized && w.memorized === 1) {
     // 少し待ってからページ送り（フィードバックを見せるため）
-    await new Promise(r => setTimeout(r, 500))
+    await new Promise(r => setTimeout(r, 10))
     deck.splice(cursor, 1)
     if (deck.length === 0) {
       showDone()
@@ -727,7 +727,7 @@ card.addEventListener('touchend', (e) => {
   if (!isSwipe) return
 
   justSwiped = true
-  setTimeout(() => { justSwiped = false }, 250)
+  setTimeout(() => { justSwiped = false }, 150)
 
   if (dx > 0) {
     if (history.length > 0) {

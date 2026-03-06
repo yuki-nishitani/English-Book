@@ -15,7 +15,7 @@ const PAGE = 50
 
 let searchQuery = ''
 let activeTag = ''
-let activeMemorized = 'all'  // 'all' | '0' | '1'
+let activeMemorized = '0'  // 'all' | '0' | '1'
 let allTags = []   // 全タグキャッシュ
 let sortOrder = 'none'  // 'none' | 'desc' | 'asc'
 let editOriginal = null  // 編集前の状態（キャンセル用）
@@ -209,8 +209,30 @@ async function setMemorized(wordId, checked) {
   const w = allWords.find(w => w.id === wordId)
   if (!w) return
   w.memorized = checked ? 1 : 0
+
+  // まず見た目をすぐ更新（緑色など）
   refreshCard(w)
   updateStatus()
+
+  // フィルター条件に合わなくなった場合は少し待ってからリストを除去
+  const stillMatches =
+    activeMemorized === 'all' ? true :
+    activeMemorized === '1' ? w.memorized === 1 :
+    w.memorized === 0
+
+  if (!stillMatches) {
+    await new Promise(r => setTimeout(r, 300))
+    filtered = filtered.filter(f => f.id !== wordId)
+    const cardEl = document.querySelector(`.word-card[data-id="${wordId}"]`)
+    if (cardEl) {
+      cardEl.style.transition = 'opacity 0.25s, transform 0.25s'
+      cardEl.style.opacity = '0'
+      cardEl.style.transform = 'translateX(30px)'
+      setTimeout(() => cardEl.remove(), 250)
+    }
+    updateStatus()
+  }
+
   await fetch(`${API}/api/me/words/${wordId}/status`, {
     method: 'PUT', headers,
     body: JSON.stringify({ importance: w.importance, memorized: w.memorized, memo: w.memo })
@@ -424,7 +446,20 @@ async function saveEdit() {
       if (w) {
         w.en = en; w.ja = ja; w.memo = memo
         w.importance = importance; w.memorized = memorized
-        refreshCard(w)
+
+        // フィルター条件に合わなくなった場合は即座にリストから除去
+        const stillMatches =
+          activeMemorized === 'all' ? true :
+          activeMemorized === '1' ? w.memorized === 1 :
+          w.memorized === 0
+
+        if (!stillMatches) {
+          filtered = filtered.filter(f => f.id !== wordId)
+          const card = document.querySelector(`.word-card[data-id="${wordId}"]`)
+          if (card) card.remove()
+        } else {
+          refreshCard(w)
+        }
       }
     }
     updateStatus()
