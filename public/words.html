@@ -254,7 +254,8 @@
   <div class="header">
     <div class="header-top">
       <div class="logo">English</div>
-      <div style="display:flex;gap:8px;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span id="usernameDisplay" style="font-size:13px;color:#666;"></span>
         <button class="btn primary" onclick="location.href='card.html'">カード</button>
         <button class="btn" onclick="logout()">ログアウト</button>
       </div>
@@ -272,10 +273,16 @@
   <div class="filter-bar-wrap">
     <div class="filter-bar" id="filterBar">
       <div class="filter-chip active" data-tag="" data-fixed onclick="selectTag(this)">すべて</div>
-      <div class="filter-chip" data-tag="__memorized__" data-fixed onclick="selectTag(this)">習得済み</div>
-      <div class="filter-chip" data-tag="__unmemorized__" data-fixed onclick="selectTag(this)">未習得</div>
     </div>
     <button class="sort-btn" id="sortBtn" onclick="toggleSort()">重要度 ↕</button>
+  </div>
+  <div class="filter-bar-wrap" style="border-top:none;">
+    <div class="filter-bar" style="gap:6px;padding-top:4px;padding-bottom:6px;">
+      <span style="font-size:11px;color:#999;letter-spacing:.08em;white-space:nowrap;padding:4px 4px;">習得:</span>
+      <div class="filter-chip active" data-memorized="all" onclick="selectMemorized(this)">すべて</div>
+      <div class="filter-chip" data-memorized="0" onclick="selectMemorized(this)">未習得</div>
+      <div class="filter-chip" data-memorized="1" onclick="selectMemorized(this)">習得済み</div>
+    </div>
   </div>
 
   <div class="new-tag-row">
@@ -295,7 +302,7 @@
   <div class="modal-overlay" id="editModal" onclick="onOverlayClick(event)">
     <div class="modal">
       <div class="modal-header">
-        <h3>単語を編集</h3>
+        <h3 id="modalTitle">単語を編集</h3>
         <button class="modal-close" onclick="saveEdit()">✓</button>
       </div>
 
@@ -345,13 +352,13 @@
       </div>
 
       <div class="modal-actions">
-        <button class="btn danger" onclick="deleteWord()">削除</button>
+        <button class="btn danger" id="deleteBtn" onclick="deleteWord()">削除</button>
         <button class="btn" onclick="cancelEdit()">キャンセル</button>
       </div>
     </div>
   </div>
 
-  <button class="fab" onclick="location.href='edit.html'" title="単語を追加">＋</button>
+  <button class="fab" onclick="openAddModal()" title="単語を追加">＋</button>
 
   <script src="words.js"></script>
 </body>

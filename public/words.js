@@ -15,12 +15,20 @@ const PAGE = 50
 
 let searchQuery = ''
 let activeTag = ''
+let activeMemorized = 'all'  // 'all' | '0' | '1'
 let allTags = []   // 全タグキャッシュ
 let sortOrder = 'none'  // 'none' | 'desc' | 'asc'
 let editOriginal = null  // 編集前の状態（キャンセル用）
 
 // ===== 初期化 =====
 async function init() {
+  // JWTからユーザー名を取得して表示
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    const el = document.getElementById('usernameDisplay')
+    if (el && payload.username) el.textContent = payload.username
+  } catch {}
+
   await Promise.all([loadWords(), loadTags()])
 }
 
@@ -65,18 +73,20 @@ function applyFilter() {
     const matchSearch = !q ||
       w.en.toLowerCase().includes(q) ||
       w.ja.includes(q)
-    const matchTag =
-      activeTag === '' ? true :
-      activeTag === '__memorized__' ? w.memorized === 1 :
-      activeTag === '__unmemorized__' ? w.memorized === 0 :
-      (w.tags || []).includes(activeTag)
-    return matchSearch && matchTag
+    const matchTag = activeTag === '' || (w.tags || []).includes(activeTag)
+    const matchMemorized =
+      activeMemorized === 'all' ? true :
+      activeMemorized === '1' ? w.memorized === 1 :
+      w.memorized === 0
+    return matchSearch && matchTag && matchMemorized
   })
   // ソート
   if (sortOrder === 'desc') {
-    filtered.sort((a, b) => b.importance - a.importance)
+    filtered.sort((a, b) => b.importance - a.importance || a.en.localeCompare(b.en))
   } else if (sortOrder === 'asc') {
-    filtered.sort((a, b) => a.importance - b.importance)
+    filtered.sort((a, b) => a.importance - b.importance || a.en.localeCompare(b.en))
+  } else {
+    filtered.sort((a, b) => a.en.localeCompare(b.en))
   }
 
   rendered = 0
@@ -150,23 +160,34 @@ function onSearch() {
 
 // ===== タグフィルター選択 =====
 function selectTag(el) {
-  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'))
+  document.querySelectorAll('#filterBar .filter-chip').forEach(c => c.classList.remove('active'))
   el.classList.add('active')
   activeTag = el.dataset.tag
+  applyFilter()
+}
+
+function selectMemorized(el) {
+  document.querySelectorAll('[data-memorized]').forEach(c => c.classList.remove('active'))
+  el.classList.add('active')
+  activeMemorized = el.dataset.memorized
   applyFilter()
 }
 
 // ===== ソート =====
 function toggleSort() {
   const btn = document.getElementById('sortBtn')
-  if (sortOrder === 'none' || sortOrder === 'asc') {
+  if (sortOrder === 'none') {
     sortOrder = 'desc'
     btn.textContent = '重要度 ↓'
     btn.className = 'sort-btn desc'
-  } else {
+  } else if (sortOrder === 'desc') {
     sortOrder = 'asc'
     btn.textContent = '重要度 ↑'
     btn.className = 'sort-btn asc'
+  } else {
+    sortOrder = 'none'
+    btn.textContent = '重要度 ↕'
+    btn.className = 'sort-btn'
   }
   applyFilter()
 }
@@ -197,10 +218,30 @@ async function setMemorized(wordId, checked) {
 }
 
 // ===== 編集モーダル =====
+function openAddModal() {
+  document.getElementById('modalTitle').textContent = '単語を追加'
+  document.getElementById('deleteBtn').style.display = 'none'
+  document.getElementById('editWordId').value = ''
+  document.getElementById('editEn').value = ''
+  document.getElementById('editJa').value = ''
+  document.getElementById('editMemo').value = ''
+  setEditStars(3)
+  document.getElementById('editMemorized').checked = false
+  document.getElementById('newTagInput').value = ''
+  document.getElementById('editTagsAttached').innerHTML = '<span style="color:#aaa;font-size:12px;">タグなし</span>'
+  document.getElementById('editTagsAddable').innerHTML = allTags.map(t =>
+    `<span class="edit-tag-chip addable" onclick="addTag(0,'${escAttr(t.name)}',${t.id})">+ ${escHtml(t.name)}</span>`
+  ).join('') || '<span style="color:#aaa;font-size:12px;">タグなし</span>'
+  editOriginal = null
+  document.getElementById('editModal').classList.add('show')
+}
+
 function openEditModal(wordId) {
   const w = allWords.find(w => w.id === wordId)
   if (!w) return
 
+  document.getElementById('modalTitle').textContent = '単語を編集'
+  document.getElementById('deleteBtn').style.display = ''
   document.getElementById('editWordId').value = wordId
   document.getElementById('editEn').value = w.en
   document.getElementById('editJa').value = w.ja
@@ -220,8 +261,29 @@ function closeEditModal() {
   document.getElementById('editModal').classList.remove('show')
 }
 
+function cancelEdit() {
+  editOriginal = null
+  closeEditModal()
+}
+
 function onOverlayClick(e) {
-  if (e.target === document.getElementById('editModal')) closeEditModal()
+  if (e.target !== document.getElementById('editModal')) return
+
+  const en = document.getElementById('editEn').value.trim()
+  const ja = document.getElementById('editJa').value.trim()
+  const memo = document.getElementById('editMemo').value.trim()
+  const importance = parseInt(document.getElementById('editImportance').value)
+  const memorized = document.getElementById('editMemorized').checked ? 1 : 0
+
+  const hasChange = editOriginal && (
+    en !== editOriginal.en ||
+    ja !== editOriginal.ja ||
+    memo !== editOriginal.memo ||
+    importance !== editOriginal.importance ||
+    memorized !== editOriginal.memorized
+  )
+
+  hasChange ? saveEdit() : closeEditModal()
 }
 
 function setEditStars(val) {
@@ -321,7 +383,8 @@ function onNewTagKeydown(e) {
 
 // ===== 保存 =====
 async function saveEdit() {
-  const wordId = parseInt(document.getElementById('editWordId').value)
+  const wordIdRaw = document.getElementById('editWordId').value
+  const wordId = parseInt(wordIdRaw)
   const en = document.getElementById('editEn').value.trim()
   const ja = document.getElementById('editJa').value.trim()
   const memo = document.getElementById('editMemo').value.trim()
@@ -330,34 +393,45 @@ async function saveEdit() {
 
   if (!en || !ja) { alert('英語と日本語は必須です'); return }
 
-  const saveBtn = document.getElementById('editSaveBtn')
-  saveBtn.disabled = true
-  saveBtn.textContent = '保存中...'
-
   try {
-    await fetch(`${API}/api/words/${wordId}`, {
-      method: 'PUT', headers,
-      body: JSON.stringify({ en, ja })
-    })
-    await fetch(`${API}/api/me/words/${wordId}/status`, {
-      method: 'PUT', headers,
-      body: JSON.stringify({ importance, memorized, memo })
-    })
-
-    const w = allWords.find(w => w.id === wordId)
-    if (w) {
-      w.en = en; w.ja = ja; w.memo = memo
-      w.importance = importance; w.memorized = memorized
-      refreshCard(w)
+    if (!wordIdRaw) {
+      // 新規作成
+      const res = await fetch(`${API}/api/words`, {
+        method: 'POST', headers,
+        body: JSON.stringify({ en, ja })
+      })
+      const data = await res.json()
+      const newId = data.id
+      await fetch(`${API}/api/me/words/${newId}/status`, {
+        method: 'PUT', headers,
+        body: JSON.stringify({ importance, memorized, memo })
+      })
+      // allWordsに追加して再描画
+      const newWord = { id: newId, en, ja, memo, importance, memorized, tags: [] }
+      allWords.push(newWord)
+      applyFilter()
+    } else {
+      // 編集
+      await fetch(`${API}/api/words/${wordId}`, {
+        method: 'PUT', headers,
+        body: JSON.stringify({ en, ja })
+      })
+      await fetch(`${API}/api/me/words/${wordId}/status`, {
+        method: 'PUT', headers,
+        body: JSON.stringify({ importance, memorized, memo })
+      })
+      const w = allWords.find(w => w.id === wordId)
+      if (w) {
+        w.en = en; w.ja = ja; w.memo = memo
+        w.importance = importance; w.memorized = memorized
+        refreshCard(w)
+      }
     }
     updateStatus()
     editOriginal = null
     document.getElementById('editModal').classList.remove('show')
   } catch {
     alert('保存に失敗しました')
-  } finally {
-    saveBtn.disabled = false
-    saveBtn.textContent = '保存'
   }
 }
 
