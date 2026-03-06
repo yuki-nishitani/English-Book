@@ -155,6 +155,19 @@
       border-radius: 8px; line-height: 1.6;
     }
 
+    /* タグ編集 */
+    .card-tag-area { margin-top: 14px; }
+    .card-tag-label { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: #aaa; margin-bottom: 6px; }
+    .card-tag-chips { display: flex; flex-wrap: wrap; gap: 6px; min-height: 20px; }
+    .ctag {
+      padding: 4px 10px; border-radius: 20px; font-size: 13px;
+      cursor: pointer; user-select: none; transition: all 0.15s;
+    }
+    .ctag.attached { background: var(--accent); border: 1px solid rgba(0,0,0,.06); color: #444; font-weight: 500; }
+    .ctag.attached:hover { background: #ffd700; }
+    .ctag.addable { background: #f0f0f0; border: 1px solid var(--border); color: #555; }
+    .ctag.addable:hover { background: #e8e8e8; }
+
     /* スワイプアニメーション */
     .card.swipe-left  { animation: swipeLeft  0.28s ease forwards; }
     .card.swipe-right { animation: swipeRight 0.28s ease forwards; }
@@ -262,7 +275,11 @@
 
   <div class="header">
     <div class="logo">English</div>
-    <button class="btn" onclick="location.href='words.html'">← 一覧へ</button>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span id="usernameDisplay" style="font-size:13px;color:#666;"></span>
+      <button class="btn" onclick="location.href='https://archcards.pages.dev/'">Top</button>
+      <button class="btn" onclick="location.href='words.html'">← 一覧へ</button>
+    </div>
   </div>
 
   <!-- フィルター -->
@@ -323,6 +340,12 @@
         <div class="card-en-small" id="cardEnBack"></div>
         <div class="card-ja" id="cardJa"></div>
         <div class="card-memo" id="cardMemo"></div>
+        <div class="card-tag-area" onclick="event.stopPropagation()">
+          <div class="card-tag-label">タグ</div>
+          <div class="card-tag-chips" id="cardTagsAttached"></div>
+          <div class="card-tag-label" style="margin-top:8px;">追加</div>
+          <div class="card-tag-chips" id="cardTagsAddable"></div>
+        </div>
       </div>
     </div>
 
@@ -352,12 +375,25 @@ let history = []  // 戻るための履歴
 
 // ===== 初期化 =====
 async function init() {
+  // JWTからユーザー名を取得して表示
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    const el = document.getElementById('usernameDisplay')
+    if (el && payload.username) el.textContent = payload.username
+  } catch {}
+
   const [wordsRes, tagsRes] = await Promise.all([
     fetch(`${API}/api/words`, { headers }),
     fetch(`${API}/api/tags`, { headers })
   ])
   if (wordsRes.status === 401) { location.href = 'index.html'; return }
-  allWords = await wordsRes.json()
+  const rawWords = await wordsRes.json()
+  allWords = rawWords.map(w => ({
+    ...w,
+    importance: w.importance != null ? parseInt(w.importance) : 3,
+    memorized: parseInt(w.memorized) || 0,
+    tags: w.tags ? [...new Set(String(w.tags).split(',').filter(t => t.trim() !== ''))] : []
+  }))
   allTags = await tagsRes.json()
   renderTagFilter()
   restart()
@@ -445,6 +481,9 @@ function showCard(direction = 'enter') {
 
   // 習得ボタン状態更新
   updateMemorizedBtn(w.memorized === 1)
+
+  // 裏面タグ描画
+  renderCardTags(w)
 
   // 重要度の星
   renderImportanceStars(w.importance)
@@ -535,9 +574,62 @@ function prevCard() {
 }
 
 // ===== 習得トグル =====
+function renderCardTags(w) {
+  const attached = document.getElementById('cardTagsAttached')
+  const addable = document.getElementById('cardTagsAddable')
+  const currentTags = w.tags || []
+
+  attached.innerHTML = currentTags.length === 0
+    ? '<span style="color:#ccc;font-size:12px;">なし</span>'
+    : currentTags.map(t =>
+        `<span class="ctag attached" onclick="removeCardTag(${w.id},'${escAttr(t)}')">${escHtml(t)} ✕</span>`
+      ).join('')
+
+  const available = allTags.filter(t => !currentTags.includes(t.name))
+  addable.innerHTML = available.length === 0
+    ? `<span style="color:#ccc;font-size:12px;">${allTags.length === 0 ? 'タグ読込中...' : '追加できるタグなし'}</span>`
+    : available.map(t =>
+        `<span class="ctag addable" onclick="addCardTag(${w.id},'${escAttr(t.name)}',${t.id})">+ ${escHtml(t.name)}</span>`
+      ).join('')
+}
+
+async function addCardTag(wordId, tagName, tagId) {
+  const w = deck.find(w => w.id === wordId)
+  if (w && (w.tags || []).includes(tagName)) return  // 重複防止
+  await fetch(`${API}/api/words/${wordId}/tags`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ tagId })
+  })
+  const orig = allWords.find(w => w.id === wordId)
+  if (w) w.tags = [...new Set([...(w.tags || []), tagName])]
+  if (orig) orig.tags = [...new Set([...(orig.tags || []), tagName])]
+  // 表面のタグバッジも更新
+  document.getElementById('cardTags').innerHTML = (w.tags || []).map(t =>
+    `<span class="tag-badge">${escHtml(t)}</span>`
+  ).join('')
+  renderCardTags(w)
+}
+
+async function removeCardTag(wordId, tagName) {
+  const tag = allTags.find(t => t.name === tagName)
+  if (!tag) return
+  await fetch(`${API}/api/words/${wordId}/tags/${tag.id}`, {
+    method: 'DELETE', headers
+  })
+  const w = deck.find(w => w.id === wordId)
+  const orig = allWords.find(w => w.id === wordId)
+  if (w) w.tags = (w.tags || []).filter(t => t !== tagName)
+  if (orig) orig.tags = (orig.tags || []).filter(t => t !== tagName)
+  document.getElementById('cardTags').innerHTML = (w.tags || []).map(t =>
+    `<span class="tag-badge">${escHtml(t)}</span>`
+  ).join('')
+  renderCardTags(w)
+}
+
 function renderImportanceStars(val) {
+  const n = parseInt(val) || 0
   document.querySelectorAll('.i-star').forEach(s => {
-    s.classList.toggle('on', parseInt(s.dataset.val) <= val)
+    s.classList.toggle('on', parseInt(s.dataset.val) <= n)
   })
 }
 
@@ -657,6 +749,9 @@ document.addEventListener('keydown', e => {
 
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+}
+function escAttr(s) {
+  return String(s).replace(/'/g, '&#39;').replace(/"/g, '&quot;')
 }
 
 init()
